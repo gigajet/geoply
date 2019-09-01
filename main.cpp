@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
+#include <Windows.h>
 
 using namespace std;
 
@@ -15,8 +16,8 @@ enum State {
     TwoPointSelected
 } state;
 
-const int kScreenWidth = 860,
-          kScreenHeight = 640;
+const int kScreenWidth = 1024,
+          kScreenHeight = 700;
 const sf::Color kNotSelected(0,0,0),
                 kToBeSelected(144, 238, 144),
                 kSelected(255, 0, 0);
@@ -31,9 +32,15 @@ int xs1, ys1, xs2, ys2;
 //To be selected point
 int xs, ys;
 
+bool mouseLeftHolding;
+sf::Vector2i mouseOldPosition;
+
 sf::RenderWindow window;
+sf::Font font;
 
 //State_HandleEvent should set the according global variables, even if invalid.
+
+void ChangeState (State newState);
 
 void NoneSelected_HandleEvent (sf::Event ev);
 void NoneSelected_DrawMenu ();
@@ -46,6 +53,12 @@ void OnePointSelected_DrawMenu ();
 
 void TwoPointSelected_HandleEvent (sf::Event ev);
 void TwoPointSelected_DrawMenu ();
+
+//
+void SaveToFile ();
+void LoadFromFile ();
+void NewWithRect();
+void NewWithCircle();
 
 //Fill with white
 void DrawShape (int i, sf::Color border);
@@ -123,14 +136,19 @@ bool inside (int x, int y, const Shape& sh) {
     return true;
 }
 
-#define TESTING
+//#define TESTING
 
 int main() {
     //INIT CODE GOES HERE
     window.create(sf::VideoMode(kScreenWidth,kScreenHeight),
-                    "Geometric Playground",
+                    L"Rê và cắt giấy",
                     sf::Style::Titlebar+sf::Style::Close);
     window.setFramerateLimit(60);
+    window.setPosition({0,0});
+    if (!font.loadFromFile("UVNDoiMoi.ttf")) {
+        cerr<<"Font loading failed!";
+        return 0;
+    }
     sf::Image img;
     sf::Texture bgi_texture;
     if (!bgi_texture.loadFromFile("bg.png")) {
@@ -253,11 +271,96 @@ int main() {
     return 0;
 }
 
-void NoneSelected_HandleEvent (sf::Event ev) {
+void TextOut (sf::String str, int x, int y, int pxSize, sf::Color col = sf::Color::White) {
+    sf::Text txt(str,font,pxSize);
+    txt.setPosition(1.f*x,1.f*y);
+    txt.setFillColor(col);
+    window.draw(txt);
+}
 
+/*
+    SHOULD CHANGE THESE:
+    vector<Shape> shape;
+    int selectingShape, toBeSelectedShape;
+
+    //Two selected points
+    int xs1, ys1, xs2, ys2;
+    //To be selected point
+    int xs, ys;
+
+    bool mouseLeftHolding;
+    sf::Vector2i mouseOldPosition;
+
+    state
+*/
+
+void ChangeState (State newState) {
+    state = newState;
+}
+
+void NoneSelected_HandleEvent (sf::Event ev) {
+    switch (ev.type)
+    {
+    case (sf::Event::KeyReleased): {
+        if (ev.key.code==sf::Keyboard::F4 && ev.key.alt 
+        && !ev.key.control && !ev.key.shift && !ev.key.system) { //alt-f4
+            window.close();
+        }
+        switch (ev.key.code) {
+        case (sf::Keyboard::S): {
+            SaveToFile();
+            break;
+        }
+        case (sf::Keyboard::L): {
+            LoadFromFile();
+            break;
+        }
+        case (sf::Keyboard::N): {
+            NewWithRect();
+            break;
+        }
+        case (sf::Keyboard::M): {
+            NewWithCircle();
+            break;
+        }
+        }
+    }
+    case (sf::Event::MouseMoved): {
+        //Determine ToBeSelectedShape
+        toBeSelectedShape = -1;
+        for (int i=(int)shape.size()-1; i>=0; --i) {
+            if (inside(ev.mouseMove.x, ev.mouseMove.y, shape[i])) {
+                toBeSelectedShape = i;
+                break;
+            }
+        }
+        break;
+    }
+    case (sf::Event::MouseButtonPressed): {
+        if (ev.mouseButton.button == sf::Mouse::Left) {
+            sf::Vector2i mouseOldPosition;
+            mouseLeftHolding = true;
+            if (toBeSelectedShape != -1) {
+                selectingShape = toBeSelectedShape;
+                toBeSelectedShape = -1;
+                ChangeState(State::ShapeSelected);
+            }
+        }
+        break;
+    }
+    case (sf::Event::MouseButtonReleased): {
+        if (ev.mouseButton.button == sf::Mouse::Left) {
+            mouseLeftHolding = false;
+        }
+        break;
+    }
+    }
 }
 void NoneSelected_DrawMenu () {
-
+    TextOut(L"(S) Mọi thứ->File", 50, 665, 26);
+    TextOut(L"(L) File->Mọi thứ", 350, 665, 26);
+    TextOut(L"(N) Dẹp hết, còn HCN", 650, 665, 26);
+    TextOut(L"(M) Dẹp hết, còn Tròn", 650, 615, 26);
 }
 
 void ShapeSelected_HandleEvent (sf::Event ev) {
@@ -275,10 +378,108 @@ void OnePointSelected_DrawMenu () {
 }
 
 void TwoPointSelected_HandleEvent (sf::Event ev) {
-
+    
 }
 void TwoPointSelected_DrawMenu () {
 
+}
+void SaveToFile () {
+    wchar_t filename[512]; fill(filename, filename+512, L'\0');
+    OPENFILENAMEW ofn;
+    //memset((void*)ofn, 0, sizeof(OPENFILENAMEW));
+    ofn.hwndOwner = window.getSystemHandle();
+    ofn.lpstrFilter = L"File nào cũng được\0*.*\0\0";
+    ofn.lpstrCustomFilter = NULL;
+    ofn.nFilterIndex = 0;
+    ofn.lpstrFile = filename;
+    ofn.nMaxFile = 512;
+    ofn.lpstrFileTitle = NULL;
+    ofn.lpstrInitialDir = NULL;
+    ofn.lpstrTitle = L"Lưu ra đâu đây?";
+    ofn.Flags = OFN_DONTADDTORECENT + OFN_OVERWRITEPROMPT + OFN_PATHMUSTEXIST;
+    ofn.lpstrDefExt = nullptr;
+    ofn.lStructSize = sizeof(OPENFILENAMEW);
+    if (GetSaveFileNameW(&ofn)) {
+        wstring filenamewstr (ofn.lpstrFile);
+        HANDLE handle = CreateFileW(filename, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        int nshape = (int)shape.size();
+        DWORD numByteWritten;
+        WriteFile(handle, (char*)&nshape, sizeof nshape, &numByteWritten, NULL);
+        for (int i=0; i<nshape; ++i) {
+            int n=shape[i].e.size();
+            WriteFile(handle, (char*)&n, sizeof n, &numByteWritten, NULL);
+            for (int j=0; j<n; ++j) {
+                WriteFile(handle, (char*)&shape[i].e[j], sizeof shape[i].e[j], &numByteWritten, NULL);
+                WriteFile(handle, (char*)&shape[i].x[j], sizeof(int), &numByteWritten, NULL);
+                WriteFile(handle, (char*)&shape[i].y[j], sizeof(int), &numByteWritten, NULL);
+            }
+        }
+        CloseHandle(handle);
+    }
+}
+void LoadFromFile () {
+    wchar_t filename[512]; fill(filename, filename+512, L'\0');
+    OPENFILENAMEW ofn;
+    //memset((void*)ofn, 0, sizeof(OPENFILENAMEW));
+    ofn.hwndOwner = window.getSystemHandle();
+    ofn.lpstrFilter = L"File nào cũng được\0*.*\0\0";
+    ofn.lpstrCustomFilter = NULL;
+    ofn.nFilterIndex = 0;
+    ofn.lpstrFile = filename;
+    ofn.nMaxFile = 512;
+    ofn.lpstrFileTitle = NULL;
+    ofn.lpstrInitialDir = NULL;
+    ofn.lpstrTitle = L"Nạp từ đâu đây?";
+    ofn.Flags = OFN_DONTADDTORECENT + OFN_OVERWRITEPROMPT + OFN_PATHMUSTEXIST + OFN_FILEMUSTEXIST;
+    ofn.lpstrDefExt = nullptr;
+    ofn.lStructSize = sizeof(OPENFILENAMEW);
+    if (GetOpenFileNameW(&ofn)) {
+        shape.clear();
+        HANDLE handle = CreateFileW(filename, GENERIC_READ, 0, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        int nshape; DWORD numBytesRead;
+        ReadFile(handle, (char*)&nshape, sizeof(int), &numBytesRead, NULL);
+        Shape sh;
+        for (int i=0; i<nshape; ++i) {
+            int n; sh.e.clear(); sh.x.clear(); sh.y.clear();
+            Edge e; int x, y;
+            ReadFile(handle, (char*)&n, sizeof(int), &numBytesRead, NULL);
+            for (int j=0; j<n; ++j) {
+                ReadFile(handle, (char*)&e, sizeof e, &numBytesRead, NULL);
+                ReadFile(handle, (char*)&x, sizeof(int), &numBytesRead, NULL);
+                ReadFile(handle, (char*)&y, sizeof(int), &numBytesRead, NULL);
+                sh.e.push_back(e); sh.x.push_back(x); sh.y.push_back(y);
+            }
+            shape.push_back(sh);
+        }
+        CloseHandle(handle);
+    }
+}
+void NewWithRect() {
+    shape.clear();
+
+    //700 x 500 rectangle topleft at (50,50)
+    const int width = 700, height = 500;
+    const int x = 50, y = 50;
+
+    Shape sh;
+    Edge e; e.isArc = e.xc = e.yc = 0;
+    sh.e = {e, e, e, e};
+    sh.x = {x, x, x+width-1, x+width-1};
+    sh.y = {y, y+height-1, y+height-1, y};
+    shape.push_back(sh);
+}
+void NewWithCircle() {
+    shape.clear();
+
+    //Radius 200 centered at (300, 300)
+    const int radius = 200;
+    const int xc=300, yc=300;
+
+    Shape sh;
+    sh.e = {{1,xc,yc}, {1,xc,yc}};
+    sh.x = {xc, xc};
+    sh.y = {yc-radius+1, yc+radius-1};
+    shape.push_back(sh);
 }
 
 //Fill with white, util function
