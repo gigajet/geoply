@@ -6,6 +6,7 @@
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
 #include <Windows.h>
+#include "img.h"
 
 using namespace std;
 
@@ -21,6 +22,10 @@ const int kScreenWidth = 1024,
 const sf::Color kNotSelected(0,0,0),
                 kToBeSelected(144, 238, 144),
                 kSelected(255, 0, 0);
+
+//Playground Viewport
+const int groundx = 0, groundX = 1024,
+          groundy = 0, groundY = 600;
 
 const int kNearRadius = 3;
 
@@ -60,10 +65,14 @@ void LoadFromFile ();
 void NewWithRect();
 void NewWithCircle();
 
+void ShapeToFile (const Shape &sh);
+
 //Fill with white
 void DrawShape (int i, sf::Color border);
 void DrawPoint (int x, int y, sf::Color col); //OK
+void MoveShape (int i, int deltaX, int deltaY);
 
+sf::IntRect BoundaryRect (int i);
 //Nearly coincide
 bool coincide (int x1, int y1, int x2, int y2) {
     int dsq = dsq_(x1,y1,x2,y2);
@@ -141,7 +150,7 @@ bool inside (int x, int y, const Shape& sh) {
 int main() {
     //INIT CODE GOES HERE
     window.create(sf::VideoMode(kScreenWidth,kScreenHeight),
-                    L"Rê và cắt giấy",
+                    L"Rê và cắt giấy ~",
                     sf::Style::Titlebar+sf::Style::Close);
     window.setFramerateLimit(60);
     window.setPosition({0,0});
@@ -163,7 +172,7 @@ int main() {
     state = NoneSelected;
 
 
-    #ifdef TESTING
+#ifdef TESTING
     /* //DrawPoint Test
     DrawPoint(100, 100, kSelected);
     DrawPoint(100,200,kNotSelected);
@@ -266,7 +275,7 @@ int main() {
     }
     //FREE CODE GOES HERE
 
-    #endif
+#endif
 
     return 0;
 }
@@ -338,8 +347,9 @@ void NoneSelected_HandleEvent (sf::Event ev) {
     }
     case (sf::Event::MouseButtonPressed): {
         if (ev.mouseButton.button == sf::Mouse::Left) {
-            sf::Vector2i mouseOldPosition;
             mouseLeftHolding = true;
+            mouseOldPosition = {ev.mouseButton.x, ev.mouseButton.y};
+
             if (toBeSelectedShape != -1) {
                 selectingShape = toBeSelectedShape;
                 toBeSelectedShape = -1;
@@ -364,10 +374,89 @@ void NoneSelected_DrawMenu () {
 }
 
 void ShapeSelected_HandleEvent (sf::Event ev) {
+    switch (ev.type) {
+    case (sf::Event::KeyReleased): {
+        if (ev.key.code==sf::Keyboard::F4 && ev.key.alt 
+        && !ev.key.control && !ev.key.shift && !ev.key.system) { //alt-f4
+            window.close();
+        }
 
+        switch (ev.key.code) {
+        case (sf::Keyboard::Tab): {
+            if (selectingShape == (int)shape.size()-1)
+                selectingShape = 0;
+            else selectingShape += 1;
+            break;
+        }
+        case (sf::Keyboard::S): {
+            ShapeToFile(shape[selectingShape]);
+            break;
+        }
+        case (sf::Keyboard::Delete): {
+            shape.erase(shape.begin() + selectingShape);
+            selectingShape = -1;
+            ChangeState(State::NoneSelected);
+            break;
+        }
+        case (sf::Keyboard::Escape): {
+            selectingShape = -1;
+            ChangeState(State::NoneSelected);
+            break;
+        }
+
+        }
+        break;
+    }
+    case (sf::Event::MouseButtonPressed): {
+        if (ev.mouseButton.button==sf::Mouse::Left) { //Move
+            if (inside(ev.mouseButton.x,ev.mouseButton.y,shape[selectingShape])) {
+                mouseLeftHolding = true;
+                mouseOldPosition = {ev.mouseButton.x, ev.mouseButton.y};
+            }
+        }
+        if (ev.mouseButton.button==sf::Mouse::Right) { //Unselect
+            selectingShape=-1;
+            ChangeState(State::NoneSelected);
+        }
+        break;
+    }
+    case (sf::Event::MouseButtonReleased): {
+        if (ev.mouseButton.button == sf::Mouse::Left) {
+            mouseLeftHolding = false;
+        }
+        break;
+    }
+    case (sf::Event::MouseMoved): {
+        if (mouseLeftHolding) {
+            //cerr<<"OldPos: "<<mouseOldPosition.x<<" "<<mouseOldPosition.y<<endl;
+            sf::Vector2i newPos = {ev.mouseMove.x, ev.mouseMove.y};
+            //cerr<<"NewPos: "<<newPos.x<<" "<<newPos.y<<endl;
+            sf::Vector2i delta = newPos - mouseOldPosition;
+            //cerr<<"Delta b4: "<<delta.x<<" "<<delta.y<<endl;
+
+            //Don't allow shape to move out of Playground Viewport.
+            sf::IntRect bound = BoundaryRect(selectingShape);
+            //cerr<<"Boundrect: "<<bound.left<<" "<<bound.top<<" "<<bound.left+bound.width-1<<" "<<bound.top+bound.height-1<<endl;
+            delta.x = max(delta.x, groundx-bound.left);
+            delta.x = min(delta.x, groundX - (bound.left+bound.width-1));
+            delta.y = max(delta.y, groundy-bound.top);
+            delta.y = min(delta.y, groundY - (bound.top+bound.height-1));
+
+            //cerr<<"Delta: "<<delta.x<<" "<<delta.y<<endl<<endl;
+
+            MoveShape (selectingShape, delta.x, delta.y);
+
+            mouseOldPosition = newPos;
+        }
+        break;
+    }
+    }
 }
 void ShapeSelected_DrawMenu () {
-
+    TextOut(L"(S) Hình này->File", 50, 665, 26);
+    TextOut(L"(Del) Xóa hình này", 350, 665, 26);
+    TextOut(L"(ESC) Bỏ chọn hình", 650, 665, 26);
+    TextOut(L"(Tab) Chọn hình kế", 650, 615, 26);
 }
 
 void OnePointSelected_HandleEvent (sf::Event ev) {
@@ -481,6 +570,138 @@ void NewWithCircle() {
     sh.y = {yc-radius+1, yc+radius-1};
     shape.push_back(sh);
 }
+sf::IntRect BoundaryRect (const Shape &sh) {
+    //FOR ARCS, 12 DEGREE A POINT
+    float degreePerPoint = 12.0;
+
+    int n = (int)sh.x.size();
+    int minx=99999999, maxx=-1, miny=99999999, maxy=-1;
+    sf::ConvexShape s;
+    int j=0;
+    for (int i=0; i<n; ++i) {
+        if (sh.e[i].isArc) {
+            sf::Vector2f v1 (sh.x[i] - sh.e[i].xc, sh.y[i] - sh.e[i].yc),
+                         v2 (sh.x[(i+1)%n] - sh.e[i].xc,sh.y[(i+1)%n] - sh.e[i].yc);
+            float theta = angle(v1, v2);
+            int numMidPoint = (int)(abs(theta)/degreePerPoint); //0..numMidPoint-1
+
+            float delta_theta = theta / numMidPoint;
+
+            float t = 0.0;
+            for (int k=0; k<numMidPoint; ++k) { //actually, it's k to numMidPoint-1, but it's ok.
+                sf::Vector2f pnt = rotate(v1, t);
+                pnt = {sh.e[i].xc+pnt.x, sh.e[i].yc+pnt.y};
+                minx = min(minx, (int)floor(pnt.x)); maxx = max(maxx, (int)ceil(pnt.x));
+                miny = min(miny, (int)floor(pnt.y)); maxy = max(maxy, (int)ceil(pnt.y));
+                t = t + delta_theta;
+            }
+        }
+        else {
+            maxx=max(maxx, sh.x[i]); minx=min(minx, sh.x[i]);
+            maxy=max(maxy, sh.y[i]); miny=min(miny, sh.y[i]);
+        }
+    }
+    sf::IntRect rect;
+    rect.left = minx; rect.width = maxx-minx+1;
+    rect.top = miny; rect.height = maxy-miny+1;
+    return rect;
+}
+sf::IntRect BoundaryRect (int i) {
+    return BoundaryRect(shape[i]);
+}
+
+//Draw shape to @param rtxt instead of screen.
+//No border, please, translate upleft by boundRect.x and boundRect.y
+void DrawShape (const Shape &sh, sf::IntRect boundRect, sf::RenderTexture &rtxt) {
+    //FOR ARCS, 5 DEGREE A POINT
+    float degreePerPoint = 5.0;
+
+    int n = (int)sh.x.size();
+    sf::ConvexShape s;
+    int ns = 0;
+    //Calculate number of points
+    for (int i=0; i<n; ++i)
+        if (sh.e[i].isArc) {
+            sf::Vector2f v1 (sh.x[i] - sh.e[i].xc, sh.y[i] - sh.e[i].yc),
+                         v2 (sh.x[(i+1)%n] - sh.e[i].xc,sh.y[(i+1)%n] - sh.e[i].yc);
+            float theta = angle(v1, v2);
+            ns += (int)(abs(theta)/degreePerPoint);
+        }
+        else {
+            ns ++;
+        }
+    //cerr<<ns<<" points set."<<endl;
+
+    //Now add point to s
+    s.setPointCount(ns);
+    s.setFillColor(sf::Color::White);
+    s.setOutlineThickness(0);
+    int j=0;
+    for (int i=0; i<n; ++i) {
+        if (sh.e[i].isArc) {
+            sf::Vector2f v1 (sh.x[i] - sh.e[i].xc, sh.y[i] - sh.e[i].yc),
+                         v2 (sh.x[(i+1)%n] - sh.e[i].xc,sh.y[(i+1)%n] - sh.e[i].yc);
+            //cerr<<"v1: "<<v1.x<<" "<<v1.y<<" - v2: "<<v2.x<<" "<<v2.y<<endl;
+            float theta = angle(v1, v2);
+            int numMidPoint = (int)(abs(theta)/degreePerPoint); //0..numMidPoint-1
+
+            //cerr<<"#Mid points: "<<numMidPoint<<endl;
+
+            float delta_theta = theta / numMidPoint;
+
+            float t = 0.0;
+            for (int k=0; k<numMidPoint; ++k) { //actually, it's k to numMidPoint-1, but it's ok.
+                sf::Vector2f pnt = rotate(v1, t);
+                //cerr<<"Vector #"<<j<<": "<<pnt.x<<" "<<pnt.y<<endl;
+                //cerr<<"Point "<<j<<": "<<sh.e[i].xc+pnt.x<<" "<<sh.e[i].yc+pnt.y<<endl;
+                s.setPoint(j++, {sh.e[i].xc+pnt.x-boundRect.left, sh.e[i].yc+pnt.y-boundRect.top});
+                t = t + delta_theta;
+                //cerr<<"t: "<<t<<endl;
+            }
+        }
+        else {
+            s.setPoint(j++, {1.0f*sh.x[i]-boundRect.left,1.0f*sh.y[i]-boundRect.top});
+            //cerr<<"Point "<<j<<": "<<sh.x[i]<<" "<<sh.y[i]<<endl;
+        }
+    }
+    //Finalize
+    rtxt.draw(s);
+}
+
+void ShapeToFile (const Shape &sh) {
+    //jpg, png, bmp
+    //Draw sh to sf::Image
+    sf::IntRect boundRect = BoundaryRect(sh);
+    sf::RenderTexture rtxt;
+    rtxt.create(boundRect.width, boundRect.height);
+    //Fill with black
+    sf::RectangleShape blackRect (sf::Vector2f(boundRect.width, boundRect.height));
+    blackRect.setFillColor(sf::Color::Black);
+    rtxt.draw(blackRect);
+    DrawShape(sh, boundRect, rtxt);
+    sf::Texture txt = rtxt.getTexture();
+    sf::Image img = txt.copyToImage();
+
+    wchar_t filename[512]; fill(filename, filename+512, L'\0');
+    OPENFILENAMEW ofn;
+    //memset((void*)ofn, 0, sizeof(OPENFILENAMEW));
+    ofn.hwndOwner = window.getSystemHandle();
+    ofn.lpstrFilter = L"Bitmap BMP\0*.BMP\0\0";
+    ofn.lpstrCustomFilter = NULL;
+    ofn.nFilterIndex = 0;
+    ofn.lpstrFile = filename;
+    ofn.nMaxFile = 512;
+    ofn.lpstrFileTitle = NULL;
+    ofn.lpstrInitialDir = NULL;
+    ofn.lpstrTitle = L"Ảnh lưu đâu đây?";
+    ofn.Flags = OFN_DONTADDTORECENT + OFN_OVERWRITEPROMPT + OFN_PATHMUSTEXIST;
+    ofn.lpstrDefExt = nullptr;
+    ofn.lStructSize = sizeof(OPENFILENAMEW);
+    if (GetSaveFileNameW(&ofn)) {
+        //ImageToBMP()
+        ImageToBMP(img, filename);
+    }
+}
 
 //Fill with white, util function
 void DrawShape (const Shape &sh, sf::Color border) {
@@ -496,7 +717,7 @@ void DrawShape (const Shape &sh, sf::Color border) {
             sf::Vector2f v1 (sh.x[i] - sh.e[i].xc, sh.y[i] - sh.e[i].yc),
                          v2 (sh.x[(i+1)%n] - sh.e[i].xc,sh.y[(i+1)%n] - sh.e[i].yc);
             float theta = angle(v1, v2);
-            ns += (int)(abs(theta)/degreePerPoint) - 1;
+            ns += (int)(abs(theta)/degreePerPoint);
         }
         else {
             ns ++;
@@ -522,7 +743,7 @@ void DrawShape (const Shape &sh, sf::Color border) {
             float delta_theta = theta / numMidPoint;
 
             float t = 0.0;
-            for (int k=0; k<numMidPoint-1; ++k) { //actually, it's k to numMidPoint-1, but it's ok.
+            for (int k=0; k<numMidPoint; ++k) { //actually, it's k to numMidPoint-1, but it's ok.
                 sf::Vector2f pnt = rotate(v1, t);
                 //cerr<<"Vector #"<<j<<": "<<pnt.x<<" "<<pnt.y<<endl;
                 //cerr<<"Point "<<j<<": "<<sh.e[i].xc+pnt.x<<" "<<sh.e[i].yc+pnt.y<<endl;
@@ -557,4 +778,18 @@ void DrawPoint (int x, int y, sf::Color col) {
     point.setFillColor(col);
     point.setPosition(1.0*x, 1.0*y);
     window.draw(point);
+}
+void MoveShape (Shape &sh, int deltaX, int deltaY) {
+    int n = (int)sh.e.size();
+    for (int i=0; i<n; ++i) {
+        if (sh.e[i].isArc) {
+            sh.e[i].xc += deltaX;
+            sh.e[i].yc += deltaY;
+        }
+        sh.x[i] += deltaX;
+        sh.y[i] += deltaY;
+    }
+}
+void MoveShape (int i, int deltaX, int deltaY) {
+    MoveShape(shape[i], deltaX, deltaY);
 }
