@@ -20,14 +20,14 @@ enum State {
 const int kScreenWidth = 1024,
           kScreenHeight = 700;
 const sf::Color kNotSelected(0,0,0),
-                kToBeSelected(144, 238, 144),
+                kToBeSelected(0,255,0), //(144, 238, 144),
                 kSelected(255, 0, 0);
 
 //Playground Viewport
 const int groundx = 0, groundX = 1024,
           groundy = 0, groundY = 600;
 
-const int kNearRadius = 3;
+const int kNearRadius = 10;
 
 vector<Shape> shape;
 int selectingShape, toBeSelectedShape;
@@ -66,6 +66,7 @@ void NewWithRect();
 void NewWithCircle();
 
 void ShapeToFile (const Shape &sh);
+void ShapeToFile (int i);
 
 //Fill with white
 void DrawShape (int i, sf::Color border);
@@ -144,6 +145,8 @@ bool inside (int x, int y, const Shape& sh) {
         }
     return true;
 }
+
+sf::Vector2i ToBeSelectedPoint (int mousex, int mousey);
 
 //#define TESTING
 
@@ -254,9 +257,9 @@ int main() {
             DrawShape(selectingShape, kSelected);
             if (xs1!=-1)
                 DrawPoint(xs1, ys1, kSelected);
-            if (xs1!=-1)
-                DrawPoint(xs1, ys2, kSelected);
-            if (state!=TwoPointSelected && !coincide(xs1,ys1,xs,ys) && !coincide(xs2,ys2,xs,ys)) {
+            if (xs2!=-1)
+                DrawPoint(xs2, ys2, kSelected);
+            if (state!=TwoPointSelected && xs!=-1 && !coincide(xs1,ys1,xs,ys) && !coincide(xs2,ys2,xs,ys)) {
                 DrawPoint(xs, ys, kToBeSelected);
             }
         }
@@ -389,7 +392,7 @@ void ShapeSelected_HandleEvent (sf::Event ev) {
             break;
         }
         case (sf::Keyboard::S): {
-            ShapeToFile(shape[selectingShape]);
+            ShapeToFile(selectingShape);
             break;
         }
         case (sf::Keyboard::Delete): {
@@ -412,6 +415,10 @@ void ShapeSelected_HandleEvent (sf::Event ev) {
             if (inside(ev.mouseButton.x,ev.mouseButton.y,shape[selectingShape])) {
                 mouseLeftHolding = true;
                 mouseOldPosition = {ev.mouseButton.x, ev.mouseButton.y};
+            }
+            else if (xs!=-1 && ys!=-1) { //Select a point
+                xs1 = xs; ys1 = ys; xs=ys=-1;
+                ChangeState(State::OnePointSelected);
             }
         }
         if (ev.mouseButton.button==sf::Mouse::Right) { //Unselect
@@ -447,6 +454,17 @@ void ShapeSelected_HandleEvent (sf::Event ev) {
             MoveShape (selectingShape, delta.x, delta.y);
 
             mouseOldPosition = newPos;
+        }
+        else { //toBeSelectedPoint calculate
+            xs = ys = -1;
+            sf::Vector2i tbsp = ToBeSelectedPoint(ev.mouseMove.x, ev.mouseMove.y);
+
+            //cerr<<"Mouse: "<<ev.mouseMove.x<<" "<<ev.mouseMove.y<<endl;
+            //cerr<<"TBSP: "<<tbsp.x<<" "<<tbsp.y<<endl<<endl;
+
+            if (coincide(tbsp.x, tbsp.y, ev.mouseMove.x, ev.mouseMove.y)) {
+                xs = tbsp.x; ys = tbsp.y;
+            }
         }
         break;
     }
@@ -613,8 +631,8 @@ sf::IntRect BoundaryRect (int i) {
 //Draw shape to @param rtxt instead of screen.
 //No border, please, translate upleft by boundRect.x and boundRect.y
 void DrawShape (const Shape &sh, sf::IntRect boundRect, sf::RenderTexture &rtxt) {
-    //FOR ARCS, 5 DEGREE A POINT
-    float degreePerPoint = 5.0;
+    //FOR ARCS, 1 DEGREE A POINT
+    float degreePerPoint = 1.0;
 
     int n = (int)sh.x.size();
     sf::ConvexShape s;
@@ -673,6 +691,7 @@ void ShapeToFile (const Shape &sh) {
     //Draw sh to sf::Image
     sf::IntRect boundRect = BoundaryRect(sh);
     sf::RenderTexture rtxt;
+    rtxt.setSmooth(true); //Anti-aliasing.
     rtxt.create(boundRect.width, boundRect.height);
     //Fill with black
     sf::RectangleShape blackRect (sf::Vector2f(boundRect.width, boundRect.height));
@@ -695,12 +714,19 @@ void ShapeToFile (const Shape &sh) {
     ofn.lpstrInitialDir = NULL;
     ofn.lpstrTitle = L"Ảnh lưu đâu đây?";
     ofn.Flags = OFN_DONTADDTORECENT + OFN_OVERWRITEPROMPT + OFN_PATHMUSTEXIST;
-    ofn.lpstrDefExt = nullptr;
+    ofn.lpstrDefExt = L"BMP\0";
     ofn.lStructSize = sizeof(OPENFILENAMEW);
+
+    //Auto append.
+
+
     if (GetSaveFileNameW(&ofn)) {
         //ImageToBMP()
         ImageToBMP(img, filename);
     }
+}
+void ShapeToFile (int i) {
+    ShapeToFile(shape[i]);
 }
 
 //Fill with white, util function
@@ -774,9 +800,10 @@ void DrawPoint (int x, int y, sf::Color col) {
         XXX
          X
     Example above: near radius = 2*/
-    sf::CircleShape point (1.0*kNearRadius);
+    sf::CircleShape point (1.0*4);
     point.setFillColor(col);
     point.setPosition(1.0*x, 1.0*y);
+    point.setOrigin(point.getRadius(), point.getRadius());
     window.draw(point);
 }
 void MoveShape (Shape &sh, int deltaX, int deltaY) {
@@ -792,4 +819,36 @@ void MoveShape (Shape &sh, int deltaX, int deltaY) {
 }
 void MoveShape (int i, int deltaX, int deltaY) {
     MoveShape(shape[i], deltaX, deltaY);
+}
+sf::Vector2i ToBeSelectedPoint (int mousex, int mousey) {
+    int mindsq = numeric_limits<int>::max();
+    int v = -1;
+    int n = (int)shape[selectingShape].e.size();
+    const Shape &sh = shape[selectingShape];
+    //Ưu tiên đỉnh: chọn đỉnh gần nhất coincide
+    for (int i=0; i<n; ++i) 
+        if (coincide(mousex, mousey, sh.x[i], sh.y[i])) {
+            if (dsq_(mousex, mousey, sh.x[i], sh.y[i]) < mindsq) {
+                mindsq = dsq_(mousex, mousey, sh.x[i], sh.y[i]);
+                v = i;
+            }
+        }
+    if (v == -1) {//Nếu không có đỉnh nào
+        sf::Vector2f pntf = nearest_point(sh, 1.f*mousex, 1.f*mousey);
+        sf::Vector2i pnt = {(int)round(pntf.x), (int)round(pntf.y)};
+
+        //cerr<<"Nearest: "<<pnt.x<<" "<<pnt.y<<endl;
+
+        sf::Vector2i ans = {-1,-1}; mindsq = numeric_limits<int>::max();
+        if (coincide(mousex, mousey, pnt.x, pnt.y)) {
+            if (dsq_(mousex, mousey, pnt.x, pnt.y) < mindsq) {
+                mindsq = dsq_(mousex, mousey, pnt.x, pnt.y);
+                ans.x = pnt.x; ans.y = pnt.y;
+            }
+        }
+        return ans;
+    }
+    else {
+        return {sh.x[v], sh.y[v]};
+    }
 }
