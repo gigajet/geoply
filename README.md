@@ -4,7 +4,7 @@ Yêu cầu:
 + Độ phân giải màn hình tối thiểu 1024 x 768
 Nếu không thỏa mãn, có thể chạy sai.
 
-Vô release để tải bản 0.1 hoặc tải ở [đây](https://github.com/gigajet/geoply/releases/download/v0.1/GeoPlay.v0.1.zip)
+Vô release để tải bản 0.1 hoặc tải ở [đây](https://github.com/gigajet/geoply/releases/download/v0.1.1/GeoPlay.v0.1.1.zip)
 
 Sử dụng: thư viện SFML, WinAPI, não và tay.
 
