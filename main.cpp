@@ -279,7 +279,7 @@ int main() {
             sf::VertexArray cutline (sf::LineStrip, 2);
             cutline[0].position = {1.f*xs1, 1.f*ys1};
             cutline[1].position = {1.f*xs2, 1.f*ys2};
-            cutline[1].color = kCutLine;
+            cutline[0].color = cutline[1].color = kCutLine;
             window.draw(cutline);
         }
         ////cerr<<"Points drawn."<<endl;
