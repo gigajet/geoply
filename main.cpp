@@ -734,9 +734,12 @@ void DrawShape (const Shape &sh, sf::IntRect boundRect, sf::RenderTexture &rtxt)
                          v2 (sh.x[(i+1)%n] - sh.e[i].xc,sh.y[(i+1)%n] - sh.e[i].yc);
             float theta = angle(v1, v2);
             ns += (int)(abs(theta)/degreePerPoint);
+
+            //cerr<<i<<" th is arc"<<endl;
         }
         else {
             ns ++;
+            //cerr<<i<<" th is line"<<endl;
         }
     //cerr<<ns<<" points set."<<endl;
 
@@ -751,6 +754,7 @@ void DrawShape (const Shape &sh, sf::IntRect boundRect, sf::RenderTexture &rtxt)
                          v2 (sh.x[(i+1)%n] - sh.e[i].xc,sh.y[(i+1)%n] - sh.e[i].yc);
             //cerr<<"v1: "<<v1.x<<" "<<v1.y<<" - v2: "<<v2.x<<" "<<v2.y<<endl;
             float theta = angle(v1, v2);
+            //cerr<<"Theta: "<<theta<<endl;
             int numMidPoint = (int)(abs(theta)/degreePerPoint); //0..numMidPoint-1
 
             //cerr<<"#Mid points: "<<numMidPoint<<endl;
@@ -774,6 +778,7 @@ void DrawShape (const Shape &sh, sf::IntRect boundRect, sf::RenderTexture &rtxt)
     }
     //Finalize
     rtxt.draw(s);
+    rtxt.display(); //If don't call it, undefined behavior or upside-down.
 }
 
 void ShapeToFile (const Shape &sh) {
@@ -790,6 +795,8 @@ void ShapeToFile (const Shape &sh) {
     DrawShape(sh, boundRect, rtxt);
     sf::Texture txt = rtxt.getTexture();
     sf::Image img = txt.copyToImage();
+
+    //img.saveToFile("test.bmp");
 
     wchar_t filename[512]; fill(filename, filename+512, L'\0');
     OPENFILENAMEW ofn;
