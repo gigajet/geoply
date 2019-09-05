@@ -1,12 +1,12 @@
 #define SFML_STATIC
 #include "geo.h"
-#include <iostream>
 #include <vector>
 #include <algorithm>
 #include <SFML/Window.hpp>
 #include <SFML/Graphics.hpp>
 #include <Windows.h>
 #include "img.h"
+#include <iostream>
 
 using namespace std;
 
@@ -21,7 +21,8 @@ const int kScreenWidth = 1024,
           kScreenHeight = 700;
 const sf::Color kNotSelected(0,0,0),
                 kToBeSelected(0,255,0), //(144, 238, 144),
-                kSelected(255, 0, 0);
+                kSelected(255, 0, 0),
+                kCutLine(128, 128, 128); //gray intended
 
 //Playground Viewport
 const int groundx = 0, groundX = 1024,
@@ -36,6 +37,8 @@ int selectingShape, toBeSelectedShape;
 int xs1, ys1, xs2, ys2;
 //To be selected point
 int xs, ys;
+//Can we cut now?
+bool canCut;
 
 bool mouseLeftHolding;
 sf::Vector2i mouseOldPosition;
@@ -93,7 +96,7 @@ double TigerAngle (double xbase, double ybase, double xp, double yp) {
 }
 //LOOSE INSIDE CHECK.
 bool inside (int x, int y, const Shape& sh) {
-    const float degreePerPoint = 12.0;
+    const float degreePerPoint = 5.0;
     int ccwline = -2;
     int n = (int)sh.e.size();
     for (int i=0; i<n; ++i)
@@ -147,6 +150,9 @@ bool inside (int x, int y, const Shape& sh) {
 }
 
 sf::Vector2i ToBeSelectedPoint (int mousex, int mousey);
+int CircumferencePosition (int i, int x, int y);
+bool CanWeCutNow ();
+void CutShape ();
 
 //#define TESTING
 
@@ -169,6 +175,7 @@ int main() {
         bgi_texture.loadFromImage(img);
     }
     sf::Sprite bgi(bgi_texture);
+    cerr<< "Init OK. "<<endl;
     selectingShape = -1; toBeSelectedShape=-1;
     shape.clear();
     xs1=ys1=xs2=ys2=xs=ys=-1;
@@ -255,13 +262,25 @@ int main() {
         
         if (state!=NoneSelected) {
             DrawShape(selectingShape, kSelected);
-            if (xs1!=-1)
+            if (xs1!=-1 && ys1!=-1)
                 DrawPoint(xs1, ys1, kSelected);
-            if (xs2!=-1)
+            if (xs2!=-1 && ys2!=-1)
                 DrawPoint(xs2, ys2, kSelected);
-            if (state!=TwoPointSelected && xs!=-1 && !coincide(xs1,ys1,xs,ys) && !coincide(xs2,ys2,xs,ys)) {
+
+            //cerr<<xs<<" "<<ys<<endl;
+            if (state!=TwoPointSelected && xs!=-1 && ys!=-1) {
                 DrawPoint(xs, ys, kToBeSelected);
             }
+        }
+
+        if (state==TwoPointSelected && canCut) {
+            //Line with thickness 2 through 2 points.
+            //sf::Shape sh;
+            sf::VertexArray cutline (sf::LineStrip, 2);
+            cutline[0].position = {1.f*xs1, 1.f*ys1};
+            cutline[1].position = {1.f*xs2, 1.f*ys2};
+            cutline[1].color = kCutLine;
+            window.draw(cutline);
         }
         ////cerr<<"Points drawn."<<endl;
 
@@ -299,6 +318,8 @@ void TextOut (sf::String str, int x, int y, int pxSize, sf::Color col = sf::Colo
     int xs1, ys1, xs2, ys2;
     //To be selected point
     int xs, ys;
+    //Can we cut now?
+    bool canCut;
 
     bool mouseLeftHolding;
     sf::Vector2i mouseOldPosition;
@@ -308,6 +329,7 @@ void TextOut (sf::String str, int x, int y, int pxSize, sf::Color col = sf::Colo
 
 void ChangeState (State newState) {
     state = newState;
+    //cerr<<"Cur state: "<<state<<endl;
 }
 
 void NoneSelected_HandleEvent (sf::Event ev) {
@@ -412,13 +434,14 @@ void ShapeSelected_HandleEvent (sf::Event ev) {
     }
     case (sf::Event::MouseButtonPressed): {
         if (ev.mouseButton.button==sf::Mouse::Left) { //Move
+            if (xs!=-1 && ys!=-1) { //Select a point, more prioritize than moving shape.
+                xs1 = xs; ys1 = ys; xs=ys=-1;
+                ChangeState(State::OnePointSelected);
+            }
+            else 
             if (inside(ev.mouseButton.x,ev.mouseButton.y,shape[selectingShape])) {
                 mouseLeftHolding = true;
                 mouseOldPosition = {ev.mouseButton.x, ev.mouseButton.y};
-            }
-            else if (xs!=-1 && ys!=-1) { //Select a point
-                xs1 = xs; ys1 = ys; xs=ys=-1;
-                ChangeState(State::OnePointSelected);
             }
         }
         if (ev.mouseButton.button==sf::Mouse::Right) { //Unselect
@@ -478,17 +501,84 @@ void ShapeSelected_DrawMenu () {
 }
 
 void OnePointSelected_HandleEvent (sf::Event ev) {
+    switch (ev.type) {
+    case (sf::Event::KeyReleased): {
+        if (ev.key.code==sf::Keyboard::S && !ev.key.alt && !ev.key.control 
+        && !ev.key.shift && !ev.key.system) {
+            ShapeToFile(selectingShape);
+        }
+        if (ev.key.code==sf::Keyboard::Escape && !ev.key.alt && !ev.key.control
+        && !ev.key.shift && !ev.key.system) {
+            xs1 = ys1 = xs = ys = -1;
+            ChangeState(State::ShapeSelected);
+        }
+        break;
+    }
+    case (sf::Event::MouseMoved): { 
+        xs = ys = -1;
+        sf::Vector2i tbsp = ToBeSelectedPoint(ev.mouseMove.x, ev.mouseMove.y);
 
+        if (coincide(tbsp.x, tbsp.y, ev.mouseMove.x, ev.mouseMove.y)
+        && !coincide(tbsp.x, tbsp.y, xs1, ys1)) {
+            xs = tbsp.x; ys = tbsp.y;
+        }
+        break;
+    }
+    case (sf::Event::MouseButtonReleased): {
+        if (ev.mouseButton.button==sf::Mouse::Right) {
+            xs = ys = xs1 = ys1 = -1;
+            ChangeState(State::ShapeSelected);
+        }
+        if (ev.mouseButton.button==sf::Mouse::Left) {
+            if (xs!=-1 && ys!=-1) {
+                xs2 = xs; ys2 = ys;
+                xs = -1; ys = -1;
+                canCut = CanWeCutNow();
+                ChangeState(State::TwoPointSelected);
+            }
+        }
+        break;
+    }
+    }
 }
 void OnePointSelected_DrawMenu () {
-
+    TextOut(L"(S) Hình này->File", 50, 665, 26);
+    TextOut(L"(ESC) Bỏ chọn điểm", 350, 665, 26);
 }
 
 void TwoPointSelected_HandleEvent (sf::Event ev) {
-    
+    switch (ev.type) {
+    case (sf::Event::KeyReleased): {
+        if (ev.key.code==sf::Keyboard::S && !ev.key.alt && !ev.key.control 
+        && !ev.key.shift && !ev.key.system) {
+            ShapeToFile(selectingShape);
+        }
+        if (ev.key.code==sf::Keyboard::Escape && !ev.key.alt && !ev.key.control
+        && !ev.key.shift && !ev.key.system) {
+            xs2 = ys2 = xs = ys = -1;
+            ChangeState(State::OnePointSelected);
+        }
+        if (ev.key.code==sf::Keyboard::C && !ev.key.alt && !ev.key.control 
+        && !ev.key.shift && !ev.key.system && canCut) {
+            //CUT!
+            CutShape();
+        }
+        break;
+    }
+    case (sf::Event::MouseButtonReleased): {
+        if (ev.mouseButton.button==sf::Mouse::Right) {
+            xs = ys = xs2 = ys2 = -1;
+            ChangeState(State::OnePointSelected);
+        }
+        break;
+    }
+    }
 }
 void TwoPointSelected_DrawMenu () {
-
+    TextOut(L"(S) Hình này->File", 50, 665, 26);
+    TextOut(L"(ESC) Bỏ chọn điểm", 350, 665, 26);
+    if (canCut)
+        TextOut(L"(C) Cắt!", 650, 665, 26);
 }
 void SaveToFile () {
     wchar_t filename[512]; fill(filename, filename+512, L'\0');
@@ -578,8 +668,8 @@ void NewWithRect() {
 void NewWithCircle() {
     shape.clear();
 
-    //Radius 200 centered at (300, 300)
-    const int radius = 200;
+    //Radius 300 centered at (300, 300)
+    const int radius = 300;
     const int xc=300, yc=300;
 
     Shape sh;
@@ -590,7 +680,7 @@ void NewWithCircle() {
 }
 sf::IntRect BoundaryRect (const Shape &sh) {
     //FOR ARCS, 12 DEGREE A POINT
-    float degreePerPoint = 12.0;
+    float degreePerPoint = 5.0;
 
     int n = (int)sh.x.size();
     int minx=99999999, maxx=-1, miny=99999999, maxy=-1;
@@ -732,7 +822,7 @@ void ShapeToFile (int i) {
 //Fill with white, util function
 void DrawShape (const Shape &sh, sf::Color border) {
     //FOR ARCS, 12 DEGREE A POINT
-    float degreePerPoint = 12.0;
+    float degreePerPoint = 5.0;
 
     int n = (int)sh.x.size();
     sf::ConvexShape s;
@@ -851,4 +941,105 @@ sf::Vector2i ToBeSelectedPoint (int mousex, int mousey) {
     else {
         return {sh.x[v], sh.y[v]};
     }
+}
+
+/*
+  Gọi n là số cạnh của hình. Trả về một số [-1..2n-1]. 
+  (x,y) là điểm phải nằm (gần) trên chu vi của hình.
+  Nếu số trả về là 2k (số chẵn): điểm (x,y) trùng với điểm k trong đa giác
+  Nếu số trả về là 2k+1 (lẻ): điểm (x,y) nằm giữa 2 điểm k và k+1 trong đa giác.
+  Trả về -1 nếu điểm ko nằm gần chu vi.
+  Nhắc lại: các điểm được liệt kê counter-clockwise.
+  Đáng lẽ dùng 3.5 cho nằm giữa 3 và 4, nhưng dùng float thì khó, đành nhân 2 hết lên.
+*/
+int CircumferencePosition (const Shape &sh, int x, int y) {
+    int n = (int)sh.e.size();
+    for (int i=0; i<n; ++i)
+        if (coincide(x,y,sh.x[i],sh.y[i])) return 2*i;
+    for (int i=0; i<n; ++i) {
+        sf::Vector2f pnt = nearest_point(sh.e[i],sh.x[i],sh.y[i],sh.x[(i+1)%n],sh.y[(i+1)%n],1.f*x,1.f*y);
+        if (coincide(x,y,(int)round(pnt.x),(int)round(pnt.y)))
+            return 2*i+1;
+    }
+    return -1;
+}
+int CircumferencePosition (int i, int x, int y) {
+    return CircumferencePosition(shape[i], x, y);
+}
+
+bool CanWeCutNow () {
+    const bool NoSir = false, YesSir = true;
+    if (xs1==-1 || xs2==-1) return NoSir;
+    //if (coincide(xs1, ys1, xs2, ys2)) return NoSir; //No, if they are too near.
+    int pA=CircumferencePosition(selectingShape, xs1, ys1),
+        pB=CircumferencePosition(selectingShape, xs2, ys2);
+    if (pA == pB) return NoSir;
+    if (pA>pB) swap(pA,pB);
+    int n=shape[selectingShape].e.size();
+    if ((pA==0 && (pB==2*n-1||pB==2*n-2) 
+    && shape[selectingShape].e[n-1].isArc==false)) return NoSir;
+    if (pA%2==1) pA-=1;
+    if (pB%2==1) pB+=1;
+    if (pA+1 == pB && shape[selectingShape].e[pA].isArc==false) return NoSir; //how to cut a line edge???
+    return YesSir;
+}
+
+/*
+  CutShape need to access to global shape (to push_back the second piece)
+  The cut line is across (xs1, ys1) and (xs2, ys2).
+  The shape to be cut is shape[selectingShape]
+
+  Change: selectingShape to first piece.
+    state to kShapeSelected (0 point chosen)
+*/
+void CutShape () {
+    Shape p1, p2; //Piece1, piece2
+    Shape &sh = shape[selectingShape];
+    int pA = CircumferencePosition(selectingShape, xs1, ys1),
+        pB = CircumferencePosition(selectingShape, xs2, ys2);
+    int n = shape[selectingShape].e.size();
+    if (pA>pB) { //Ensure pos(A)<pos(B)
+        swap(pA,pB); swap(xs1,xs2); swap(ys1,ys2);
+    }
+    int truncA = pA/2 , truncB = pB/2,
+        ceilA = (pA+1)/2, ceilB = (pB+1)/2;
+    //cerr<<truncA<<" "<<ceilA<<" | "<<truncB<<" "<<ceilB<<endl;
+    Edge line; line.isArc=line.xc=line.yc=0;
+    //Piece 1: 0...truncA--A-B--ceilB...n-1
+    //p1.e.push_back(sh.e[0]); p1.x.push_back(sh.x[0]); p1.y.push_back(sh.y[0]);
+    int i;
+    for (i=0; i<truncA; ++i) {
+        p1.x.push_back(sh.x[i]); p1.y.push_back(sh.y[i]);
+        p1.e.push_back(sh.e[i]);
+    }
+    if (2*truncA < pA) {
+        p1.x.push_back(sh.x[i]); p1.y.push_back(sh.y[i]);
+        p1.e.push_back(sh.e[i]);
+    }
+    p1.e.push_back(line); p1.x.push_back(xs1); p1.y.push_back(ys1); //(A-)
+    if (pB < 2*ceilB) {
+        p1.x.push_back(xs2); p1.y.push_back(ys2);
+        p1.e.push_back(sh.e[truncB]);
+    }
+    for (i=ceilB; i<n; ++i) {
+        p1.x.push_back(sh.x[i]); p1.y.push_back(sh.y[i]); p1.e.push_back(sh.e[i]);
+    }
+    //Piece 2: A--ceilA...truncB--B
+    if (pA < 2*ceilA) {
+        p2.x.push_back(xs1); p2.y.push_back(ys1); p2.e.push_back(sh.e[truncA]);
+    }
+    for (i=ceilA; i<truncB; ++i) {
+        p2.x.push_back(sh.x[i]); p2.y.push_back(sh.y[i]); p2.e.push_back(sh.e[i]);
+    }
+    if (2*truncB<pB) {
+        p2.x.push_back(sh.x[truncB]);
+        p2.y.push_back(sh.y[truncB]);
+        p2.e.push_back(sh.e[truncB]);
+    }
+    p2.x.push_back(xs2); p2.y.push_back(ys2); p2.e.push_back(line); //(B-)
+    //Finalize
+    shape[selectingShape] = p1;
+    shape.push_back(p2);
+    xs1=ys1=xs2=ys2=xs=ys=-1;
+    ChangeState(State::ShapeSelected);
 }

@@ -5,7 +5,6 @@
 #include <vector>
 #include <cmath>
 #include <SFML/System/Vector2.hpp>
-#include <iostream>
 #include <limits>
 
 struct Edge {
@@ -108,6 +107,44 @@ bool coincide (float x1, float y1, float x2, float y2, float kNearRadius=0.1) {
 	return dsq_(x1,y1,x2,y2)<kNearRadius*kNearRadius;
 }
 
+sf::Vector2f nearest_point (const Edge &e, int xi, int yi, int xi1, int yi1, float x, float y) {
+	if (e.isArc) {
+		if (coincide(x,y,1.f*e.xc, 1.f*e.yc)) {
+			return {1.f*xi, 1.f*yi};
+		}
+		sf::Vector2f IA = {1.f*(xi-e.xc), 1.f*(yi-e.yc)};
+		sf::Vector2f IP = {x-e.xc, y-e.yc};
+		sf::Vector2f IB = {1.f*(xi1-e.xc), 1.f*(yi1-e.yc)};
+
+		float theta = angle(IA, IP), theta0 = angle(IA, IB);
+
+		if (theta>=0 && theta<=theta0) {
+			sf::Vector2f IQ = rotate(IA, theta);
+			return {IQ.x+e.xc, IQ.y+e.yc};
+		}
+		else if (theta<0 && theta+180<=theta0) { //Trực giác nói rằng nhánh này không cần.
+			sf::Vector2f IQ = rotate(IA, theta+180);
+			return {IQ.x+e.xc, IQ.y+e.yc};
+		}
+	}
+	else {
+		float xA=1.f*xi, xB=1.f*xi1, yA=1.f*yi, yB=1.f*yi1;
+			while (!coincide(xA,yA,xB,yB)) {
+				float xM = (xA+xB)/2, yM=(yA+yB)/2;
+				if (dsq_(xA, yA, x, y) < dsq_(xB, yB, x, y)) {
+					xB = xM; yB = yM;
+				}
+				else {
+					xA = xM; yA = yM;
+				}
+			}
+			if (dsq_(x,y,xA,yA) < dsq_(x,y,xB,yB))
+				return {xA, yA};
+			else return {xB, yB};
+	}
+	return {-1, -1};
+}
+
 /*
   Find point M belongs to Shape sh and nearest to (x,y).
   Distance function is the squared Euclid distance.
@@ -119,6 +156,11 @@ sf::Vector2f nearest_point (const Shape &sh, float x, float y) {
 	float mindsq = std::numeric_limits<float>::max();
 	for (int i=0; i<n; ++i) {
 		nearest_point_minimize(x,y,ans,mindsq,1.f*sh.x[i],1.f*sh.y[i]);
+
+		//Thay cho đống code bên dưới
+		sf::Vector2f nearpnt = nearest_point(sh.e[i],sh.x[i],sh.y[i],sh.x[(i+1)%n],sh.y[(i+1)%n],x,y);
+		nearest_point_minimize(x,y,ans,mindsq,nearpnt.x,nearpnt.y);
+		/*
 		if (sh.e[i].isArc) {
 			//Special case: (x,y) coincide with center of circle. In that case, any point 
 			//in the circumference will do.
@@ -132,13 +174,13 @@ sf::Vector2f nearest_point (const Shape &sh, float x, float y) {
 
 			float theta = angle(IA, IP), theta0 = angle(IA, IB);
 
-			/*
-			if (i==0) {
-				std::cerr<<"IA: "<<IA.x<<" "<<IA.y<<" | IB: "<<IB.x<<" "<<IB.y<<" | IP: "<<IP.x<<IP.y<<std::endl;
-				std::cerr<<"Theta: "<<theta<<"\nTheta0: "<<theta0<<std::endl;
-				std::cerr<<"ccw(IA,IP): "<<ccw(0.,0.,IA.x,IA.y,IP.x,IP.y)<<std::endl;
-			}
-			*/
+			
+			// if (i==0) {
+			// 	std::cerr<<"IA: "<<IA.x<<" "<<IA.y<<" | IB: "<<IB.x<<" "<<IB.y<<" | IP: "<<IP.x<<IP.y<<std::endl;
+			// 	std::cerr<<"Theta: "<<theta<<"\nTheta0: "<<theta0<<std::endl;
+			// 	std::cerr<<"ccw(IA,IP): "<<ccw(0.,0.,IA.x,IA.y,IP.x,IP.y)<<std::endl;
+			// }
+			
 
 			if (theta>=0 && theta<=theta0) {
 				sf::Vector2f IQ = rotate(IA, theta);
@@ -164,6 +206,8 @@ sf::Vector2f nearest_point (const Shape &sh, float x, float y) {
 			nearest_point_minimize(x,y,ans,mindsq,xA,yA);
 			nearest_point_minimize(x,y,ans,mindsq,xB,yB); //dư, nhưng cho chắc.
 		}
+
+		*/
 	} //for
 	return ans;
 }
