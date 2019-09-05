@@ -8,6 +8,10 @@ Vô release để tải bản 0.1 hoặc tải ở [đây](https://github.com/gi
 
 Sử dụng: thư viện SFML, WinAPI, não và tay.
 
+Đặc điểm:
+- Lưu BMP và bàn làm việc hỗ trợ tên file Unicode.
+- Drag & Drop để di chuyển hình.
+
 Khởi động thành công, có thể nhấn N hoặc M rồi bắt đầu.
 
 Có 3 trạng thái:
@@ -25,6 +29,7 @@ Lưu ý mọi hình hiện tại sẽ bị mất.
 - Có thể click chuột để chọn một hình, chuyển qua trạng thái 2.
 
 2. Chọn hình, không chọn điểm
++ Có thể drag & drop để di chuyển hình.
 - Có thể nhấn Delete để xóa hình.
 - Có thể bấm chuột phải hoặc nhấn ESC để bỏ chọn, chuyển qua trạng thái 1.
 - Có thể nhấn Tab để chọn hình khác.
