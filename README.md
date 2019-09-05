@@ -4,6 +4,8 @@ Yêu cầu:
 + Độ phân giải màn hình tối thiểu 1024 x 768
 Nếu không thỏa mãn, có thể chạy sai.
 
+Vô release để tải bản 0.1 hoặc tải ở [đây](https://github.com/gigajet/geoply/releases/download/v0.1/GeoPlay.v0.1.zip)
+
 Sử dụng: thư viện SFML, WinAPI, não và tay.
 
 Khởi động thành công, có thể nhấn N hoặc M rồi bắt đầu.
@@ -34,4 +36,3 @@ Chọn tối đa 2 điểm sẽ qua trạng thái 3.
 3. Chọn hình và hai điểm
 - Có thể nhấp chuột phải hoặc ESC để bỏ chọn từng điểm.
 - Nếu hai điểm chia hình làm hai phần thì có thể nhấn C để cắt hình làm hai.
-
